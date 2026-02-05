@@ -268,13 +268,17 @@ export function calculateATR(
   closes: number[],
   period: number = 14
 ): number[] {
+  if (highs.length < period + 1) {
+    throw new Error(`Need at least ${period + 1} data points for ATR calculation`);
+  }
+
   const trueRanges: number[] = [];
 
-  for (let i = 0; i < highs.length; i++) {
+  for (let i = 1; i < highs.length; i++) {
     const tr = Math.max(
       highs[i] - lows[i],
-      Math.abs(highs[i] - (closes[i - 1] || closes[i])),
-      Math.abs(lows[i] - (closes[i - 1] || closes[i]))
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i] - closes[i - 1])
     );
     trueRanges.push(tr);
   }
@@ -315,41 +319,85 @@ export function calculateADX(
   closes: number[],
   period: number = 14
 ): ADXResult[] {
+  if (highs.length < period * 2) {
+    throw new Error(`Need at least ${period * 2} data points for ADX calculation`);
+  }
+
   const dx: number[] = [];
+  const pdiValues: number[] = [];
+  const ndiValues: number[] = [];
 
-  for (let i = period; i < highs.length; i++) {
-    const sliceHighs = highs.slice(i - period, i + 1);
-    const sliceLows = lows.slice(i - period, i + 1);
-    const sliceCloses = closes.slice(i - period, i + 1);
+  // Calculate True Range, +DM, -DM for each bar
+  const tr: number[] = [];
+  const plusDm: number[] = [];
+  const minusDm: number[] = [];
 
-    let plusDm = 0;
-    let minusDm = 0;
+  for (let i = 1; i < highs.length; i++) {
+    const high = highs[i];
+    const low = lows[i];
+    const prevClose = closes[i - 1];
+    const prevHigh = highs[i - 1];
+    const prevLow = lows[i - 1];
 
-    for (let j = 1; j < sliceHighs.length; j++) {
-      const upMove = sliceHighs[j] - sliceHighs[j - 1];
-      const downMove = sliceLows[j - 1] - sliceLows[j];
+    // True Range
+    const currentTr = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    );
+    tr.push(currentTr);
 
-      plusDm += upMove > downMove && upMove > 0 ? upMove : 0;
-      minusDm += downMove > upMove && downMove > 0 ? downMove : 0;
-    }
+    // Directional Movement
+    const upMove = high - prevHigh;
+    const downMove = prevLow - low;
 
-    const trSum = calculateATR(sliceHighs, sliceLows, sliceCloses, period)[0] * period;
+    const currentPlusDm = (upMove > downMove && upMove > 0) ? upMove : 0;
+    const currentMinusDm = (downMove > upMove && downMove > 0) ? downMove : 0;
 
-    const pdi = trSum > 0 ? (plusDm / trSum) * 100 : 0;
-    const ndi = trSum > 0 ? (minusDm / trSum) * 100 : 0;
+    plusDm.push(currentPlusDm);
+    minusDm.push(currentMinusDm);
+  }
 
-    const dxSum = pdi + ndi > 0 ? Math.abs(pdi - ndi) / (pdi + ndi) * 100 : 0;
-    dx.push(dxSum);
+  // Calculate smoothed TR, +DM, -DM using Wilder's smoothing
+  const smoothedTr: number[] = [];
+  const smoothedPlusDm: number[] = [];
+  const smoothedMinusDm: number[] = [];
+
+  // Initial values (SMA for first period)
+  const initialTr = tr.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  const initialPlusDm = plusDm.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  const initialMinusDm = minusDm.slice(0, period).reduce((a, b) => a + b, 0) / period;
+
+  smoothedTr.push(initialTr);
+  smoothedPlusDm.push(initialPlusDm);
+  smoothedMinusDm.push(initialMinusDm);
+
+  // Wilder's smoothing for subsequent values
+  for (let i = period; i < tr.length; i++) {
+    smoothedTr.push((smoothedTr[smoothedTr.length - 1] * (period - 1) + tr[i]) / period);
+    smoothedPlusDm.push((smoothedPlusDm[smoothedPlusDm.length - 1] * (period - 1) + plusDm[i]) / period);
+    smoothedMinusDm.push((smoothedMinusDm[smoothedMinusDm.length - 1] * (period - 1) + minusDm[i]) / period);
+  }
+
+  // Calculate DI and DX
+  for (let i = 0; i < smoothedTr.length; i++) {
+    const pdi = smoothedTr[i] > 0 ? (smoothedPlusDm[i] / smoothedTr[i]) * 100 : 0;
+    const ndi = smoothedTr[i] > 0 ? (smoothedMinusDm[i] / smoothedTr[i]) * 100 : 0;
+    pdiValues.push(pdi);
+    ndiValues.push(ndi);
+
+    const dxValue = pdi + ndi > 0 ? (Math.abs(pdi - ndi) / (pdi + ndi)) * 100 : 0;
+    dx.push(dxValue);
   }
 
   // Calculate ADX as EMA of DX
   const adx = calculateEMA(dx, period);
 
+  // Align ADX with DI values (they start at different points due to initial smoothing)
   return adx.map((a, i) => ({
     adx: a,
-    // Re-calculate DI for this point (simplified)
-    pdi: 25 + Math.sin(i * 0.1) * 15,
-    ndi: 25 + Math.cos(i * 0.1) * 15,
+    pdi: pdiValues[i + period - 1] || 25,
+    ndi: ndiValues[i + period - 1] || 25,
   }));
 }
 

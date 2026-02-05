@@ -14,7 +14,7 @@ import type {
 import type { Signal, AssetClass } from '@/types/index.js';
 import type { AggregatedAccount, UnifiedPosition } from '@/types/index.js';
 import { DEFAULT_RISK_CONFIG } from '@/config/risk.js';
-import { createLogger } from '@/utils/index.js';
+import { createLogger, roundTo } from '@/utils/index.js';
 
 const log = createLogger('RISK_MANAGER');
 
@@ -148,6 +148,18 @@ export class RiskManager {
 
   private calculatePositionSize(signal: Signal, account: AggregatedAccount): PositionSize {
     const equity = account.totalEquity;
+
+    // Guard against division by zero
+    if (equity <= 0) {
+      return {
+        quantity: 0,
+        notionalValue: 0,
+        riskAmount: 0,
+        method: 'volatility',
+        reasoning: 'No equity available',
+      };
+    }
+
     const riskAmount = equity * (this.config.maxRiskPerTradePercent / 100);
 
     // Calculate stop distance
@@ -169,7 +181,7 @@ export class RiskManager {
     quantity = Math.min(quantity, maxQuantity);
 
     // Round to valid quantity
-    quantity = Math.floor(quantity * 100) / 100;
+    quantity = roundTo(quantity, 2);
 
     const notionalValue = quantity * signal.entryPrice;
 

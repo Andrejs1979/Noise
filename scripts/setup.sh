@@ -79,8 +79,10 @@ wrangler deploy
 - **Production**: {PROD_DB_ID}
 EOF
 
-sed -i "s/{DEV_DB_ID}/$DEV_DB_ID/g" "$PROJECT_ROOT/docs/INFRASTRUCTURE.md"
-sed -i "s/{PROD_DB_ID}/$PROD_DB_ID/g" "$PROJECT_ROOT/docs/INFRASTRUCTURE.md"
+# Portable sed replacement (works on both Linux and macOS)
+sed -i.bak "s/{DEV_DB_ID}/$DEV_DB_ID/g" "$PROJECT_ROOT/docs/INFRASTRUCTURE.md"
+sed -i.bak "s/{PROD_DB_ID}/$PROD_DB_ID/g" "$PROJECT_ROOT/docs/INFRASTRUCTURE.md"
+rm -f "$PROJECT_ROOT/docs/INFRASTRUCTURE.md.bak"
 
 echo "📝 Updated docs/INFRASTRUCTURE.md with database IDs"
 echo ""

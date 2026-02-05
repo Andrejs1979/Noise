@@ -58,10 +58,6 @@ queue = "signal-processing-queue"
 [limits]
 cpu_ms = 50000
 
-# Build configuration
-[build]
-command = "npm run build"
-
 # Observability
 [observability]
 enabled = true

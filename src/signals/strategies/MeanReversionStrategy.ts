@@ -5,8 +5,7 @@
  */
 
 import type { Signal, SignalDirection, MarketRegime, Timeframe } from '@/types/signal.js';
-import type { PriceBar } from '@/types/signal.js';
-import { IndicatorResult } from '@/types/signal.js';
+import type { PriceBar, IndicatorResult } from '@/types/signal.js';
 import type { StrategyInput } from './types.js';
 import { calculateBollingerBands, calculateRSI, bollingerSignal, rsiSignal, calculateATR } from '../indicators/indicators.js';
 import { generateId } from '@/utils/index.js';
@@ -55,7 +54,6 @@ export class MeanReversionStrategy {
     const now = Date.now();
 
     // Calculate position within bands (0 = lower band, 1 = upper band)
-    const bandPosition = (latestBar.close - latestBB.lower) / (latestBB.upper - latestBB.lower);
     const bandPercentile = (latestBar.close - latestBB.lower) / (latestBB.upper - latestBB.lower);
 
     // RSI analysis

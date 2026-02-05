@@ -5,8 +5,7 @@
  */
 
 import type { Signal, SignalDirection, MarketRegime, Timeframe } from '@/types/signal.js';
-import type { PriceBar } from '@/types/signal.js';
-import { IndicatorResult } from '@/types/signal.js';
+import type { PriceBar, IndicatorResult } from '@/types/signal.js';
 import type { StrategyInput } from './types.js';
 import { calculateBollingerBands, calculateADX, calculateATR, bollingerSignal, adxSignal } from '../indicators/indicators.js';
 import { generateId } from '@/utils/index.js';

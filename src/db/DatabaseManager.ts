@@ -127,10 +127,36 @@ export class DatabaseManager {
   // Convenience Methods
   // ==========================================================================
 
+  // Valid table names to prevent SQL injection
+  private readonly VALID_TABLES = [
+    'trades',
+    'positions',
+    'signals',
+    'risk_state',
+    'daily_metrics',
+    'equity_curve',
+    'audit_log',
+  ] as const;
+
+  private validateTable(table: string): void {
+    if (!this.VALID_TABLES.includes(table as any)) {
+      throw new Error(`Invalid table name: ${table}`);
+    }
+  }
+
+  private validateOrderBy(orderBy: string): void {
+    // Only allow alphanumeric and underscore
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(orderBy)) {
+      throw new Error(`Invalid orderBy column: ${orderBy}`);
+    }
+  }
+
   async insert<T extends Record<string, unknown>>(
     table: string,
     data: T
   ): Promise<void> {
+    this.validateTable(table);
+
     const keys = Object.keys(data);
     const values = Object.values(data);
     const placeholders = keys.map(() => '?').join(', ');
@@ -148,6 +174,8 @@ export class DatabaseManager {
     id: string,
     data: Partial<T>
   ): Promise<void> {
+    this.validateTable(table);
+
     const keys = Object.keys(data);
     const values = Object.values(data);
     const setClause = keys.map((k) => `${k} = ?`).join(', ');
@@ -162,6 +190,8 @@ export class DatabaseManager {
   }
 
   async delete(table: string, id: string): Promise<void> {
+    this.validateTable(table);
+
     const sql = `DELETE FROM ${table} WHERE id = ?`;
     await this.execute(sql, [id]);
   }
@@ -170,6 +200,8 @@ export class DatabaseManager {
     table: string,
     id: string
   ): Promise<T | null> {
+    this.validateTable(table);
+
     const sql = `SELECT * FROM ${table} WHERE id = ?`;
     return await this.queryFirst<T>(sql, [id]);
   }
@@ -180,10 +212,14 @@ export class DatabaseManager {
     orderBy?: string;
     orderDir?: 'ASC' | 'DESC';
   }): Promise<T[]> {
+    this.validateTable(table);
+
     let sql = `SELECT * FROM ${table}`;
 
     if (options?.orderBy) {
-      sql += ` ORDER BY ${options.orderBy} ${options.orderDir || 'ASC'}`;
+      this.validateOrderBy(options.orderBy);
+      const orderDir = options.orderDir === 'DESC' ? 'DESC' : 'ASC';
+      sql += ` ORDER BY ${options.orderBy} ${orderDir}`;
     }
 
     if (options?.limit) {

@@ -29,6 +29,19 @@ interface Env {
   ALPACA_API_SECRET?: string;
 }
 
+// Risk state row type
+interface RiskStateRow {
+  id: number;
+  current_equity: number;
+  daily_pnl: number;
+  daily_pnl_percent: number;
+  consecutive_losses: number;
+  circuit_breaker_triggered: number;
+  circuit_breaker_reason: string | null;
+  circuit_breaker_until: number | null;
+  last_updated: number;
+}
+
 // =============================================================================
 // Router Setup
 // =============================================================================
@@ -39,7 +52,7 @@ const router = Router();
 // Middleware
 // =============================================================================
 
-function authenticate(request: Request, env: Env): Response | null {
+async function authenticate(request: Request, env: Env): Promise<Response | null> {
   const authHeader = request.headers.get('Authorization');
 
   if (!authHeader) {
@@ -49,9 +62,42 @@ function authenticate(request: Request, env: Env): Response | null {
     });
   }
 
-  const token = authHeader.replace('Bearer ', '');
+  // Extract token using regex to handle "Bearer" prefix safely
+  const bearerMatch = authHeader.match(/^Bearer\s+(\S+)$/i);
+  if (!bearerMatch) {
+    return new Response(JSON.stringify({ error: 'Invalid authorization format' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
-  if (token !== env.NOISE_API_KEY) {
+  const token = bearerMatch[1];
+  const expectedKey = env.NOISE_API_KEY;
+
+  if (!expectedKey) {
+    return new Response(JSON.stringify({ error: 'Server not configured' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Use timing-safe comparison to prevent timing attacks
+  if (token.length !== expectedKey.length) {
+    return new Response(JSON.stringify({ error: 'Invalid API key' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Constant-time comparison
+  const tokenBuffer = new TextEncoder().encode(token);
+  const expectedBuffer = new TextEncoder().encode(expectedKey);
+  let result = 0;
+  for (let i = 0; i < tokenBuffer.length; i++) {
+    result |= tokenBuffer[i]! ^ expectedBuffer[i]!;
+  }
+
+  if (result !== 0) {
     return new Response(JSON.stringify({ error: 'Invalid API key' }), {
       status: 403,
       headers: { 'Content-Type': 'application/json' },
@@ -89,7 +135,7 @@ router.get('/api/health', () => {
 // =============================================================================
 
 router.get('/api/status', async (request: Request, env: Env) => {
-  const authError = authenticate(request, env);
+  const authError = await authenticate(request, env);
   if (authError) return authError;
 
   try {
@@ -112,12 +158,12 @@ router.get('/api/status', async (request: Request, env: Env) => {
         until: riskState?.circuit_breaker_until,
       },
       positions: {
-        count: (positionsResult as any)?.count || 0,
+        count: (positionsResult as { count?: number })?.count ?? 0,
       },
       risk: {
-        dailyPnl: riskState?.daily_pnl || 0,
-        dailyPnlPercent: riskState?.daily_pnl_percent || 0,
-        consecutiveLosses: riskState?.consecutive_losses || 0,
+        dailyPnl: riskState?.daily_pnl ?? 0,
+        dailyPnlPercent: riskState?.daily_pnl_percent ?? 0,
+        consecutiveLosses: riskState?.consecutive_losses ?? 0,
       },
       timestamp: Date.now(),
     });
@@ -132,21 +178,21 @@ router.get('/api/status', async (request: Request, env: Env) => {
 // =============================================================================
 
 router.get('/api/account', async (request: Request, env: Env) => {
-  const authError = authenticate(request, env);
+  const authError = await authenticate(request, env);
   if (authError) return authError;
 
   try {
     const riskState = await env.DB.prepare(
       'SELECT * FROM risk_state WHERE id = 1'
-    ).first() as any;
+    ).first() as RiskStateRow | null;
 
     return Response.json({
-      equity: riskState?.current_equity || 0,
-      cash: riskState?.current_equity || 0, // Simplified
-      buyingPower: (riskState?.current_equity || 0) * 2, // 2x leverage
-      dailyPnl: riskState?.daily_pnl || 0,
-      dailyPnlPercent: riskState?.daily_pnl_percent || 0,
-      lastUpdated: riskState?.last_updated || 0,
+      equity: riskState?.current_equity ?? 0,
+      cash: riskState?.current_equity ?? 0, // Simplified
+      buyingPower: (riskState?.current_equity ?? 0) * 2, // 2x leverage
+      dailyPnl: riskState?.daily_pnl ?? 0,
+      dailyPnlPercent: riskState?.daily_pnl_percent ?? 0,
+      lastUpdated: riskState?.last_updated ?? 0,
     });
   } catch (error) {
     log.error('Account endpoint error', error as Error);
@@ -159,7 +205,7 @@ router.get('/api/account', async (request: Request, env: Env) => {
 // =============================================================================
 
 router.get('/api/positions', async (request: Request, env: Env) => {
-  const authError = authenticate(request, env);
+  const authError = await authenticate(request, env);
   if (authError) return authError;
 
   try {
@@ -183,7 +229,7 @@ router.get('/api/positions', async (request: Request, env: Env) => {
 // =============================================================================
 
 router.get('/api/trades/today', async (request: Request, env: Env) => {
-  const authError = authenticate(request, env);
+  const authError = await authenticate(request, env);
   if (authError) return authError;
 
   try {
@@ -211,7 +257,7 @@ router.get('/api/trades/today', async (request: Request, env: Env) => {
 // =============================================================================
 
 router.get('/api/signals/active', async (request: Request, env: Env) => {
-  const authError = authenticate(request, env);
+  const authError = await authenticate(request, env);
   if (authError) return authError;
 
   try {
@@ -236,7 +282,7 @@ router.get('/api/signals/active', async (request: Request, env: Env) => {
 // =============================================================================
 
 router.get('/api/risk/state', async (request: Request, env: Env) => {
-  const authError = authenticate(request, env);
+  const authError = await authenticate(request, env);
   if (authError) return authError;
 
   try {
@@ -252,7 +298,7 @@ router.get('/api/risk/state', async (request: Request, env: Env) => {
 });
 
 router.post('/api/risk/reset-circuit-breaker', async (request: Request, env: Env) => {
-  const authError = authenticate(request, env);
+  const authError = await authenticate(request, env);
   if (authError) return authError;
 
   try {
@@ -278,7 +324,7 @@ router.post('/api/risk/reset-circuit-breaker', async (request: Request, env: Env
 // =============================================================================
 
 router.get('/api/audit', async (request: Request, env: Env) => {
-  const authError = authenticate(request, env);
+  const authError = await authenticate(request, env);
   if (authError) return authError;
 
   try {
