@@ -151,6 +151,7 @@ export class RiskManager {
 
     // Guard against division by zero
     if (equity <= 0) {
+      log.error('Invalid equity value for position sizing', undefined, { equity, source: 'account data' });
       return {
         quantity: 0,
         notionalValue: 0,
@@ -205,6 +206,17 @@ export class RiskManager {
   ): ExposureCheck {
     const violations: string[] = [];
     const warnings: string[] = [];
+
+    // Guard against invalid equity
+    if (account.totalEquity <= 0) {
+      violations.push('Cannot check exposure: invalid equity value');
+      return {
+        withinLimits: false,
+        currentExposure: account.exposure,
+        violations,
+        warnings,
+      };
+    }
 
     // Get current exposure
     const futuresExposure = account.exposure.futures;

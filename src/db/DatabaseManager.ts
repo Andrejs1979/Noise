@@ -118,7 +118,8 @@ export class DatabaseManager {
     try {
       await this.queryFirst<{ result: number }>('SELECT 1 as result');
       return true;
-    } catch {
+    } catch (error) {
+      log.warn('Database health check failed', { error: (error as Error).message });
       return false;
     }
   }
@@ -128,7 +129,7 @@ export class DatabaseManager {
   // ==========================================================================
 
   // Valid table names to prevent SQL injection
-  private readonly VALID_TABLES = [
+  private readonly VALID_TABLES = new Set([
     'trades',
     'positions',
     'signals',
@@ -136,10 +137,10 @@ export class DatabaseManager {
     'daily_metrics',
     'equity_curve',
     'audit_log',
-  ] as const;
+  ] as const);
 
   private validateTable(table: string): void {
-    if (!this.VALID_TABLES.includes(table as any)) {
+    if (!this.VALID_TABLES.has(table)) {
       throw new Error(`Invalid table name: ${table}`);
     }
   }
