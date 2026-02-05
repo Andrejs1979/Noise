@@ -222,11 +222,17 @@ export class DatabaseManager {
       sql += ` ORDER BY ${options.orderBy} ${orderDir}`;
     }
 
-    if (options?.limit) {
+    if (options?.limit !== undefined) {
+      if (options.limit < 0) {
+        throw new Error('Limit must be non-negative');
+      }
       sql += ` LIMIT ${options.limit}`;
     }
 
-    if (options?.offset) {
+    if (options?.offset !== undefined) {
+      if (options.offset < 0) {
+        throw new Error('Offset must be non-negative');
+      }
       sql += ` OFFSET ${options.offset}`;
     }
 

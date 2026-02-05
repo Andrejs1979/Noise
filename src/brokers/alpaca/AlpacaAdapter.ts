@@ -225,15 +225,19 @@ export class AlpacaAdapter implements BrokerAdapter {
     };
   }
 
-  private mapOrderStatus(status: string): 'PENDING' | 'OPEN' | 'FILLED' | 'CANCELLED' {
+  private mapOrderStatus(status: AlpacaOrderStatus): 'PENDING' | 'OPEN' | 'FILLED' | 'CANCELLED' {
     const validStatuses = ['PENDING', 'OPEN', 'FILLED', 'CANCELLED'] as const;
-    const map: Record<string, typeof validStatuses[number]> = {
+    const map: Record<AlpacaOrderStatus, typeof validStatuses[number]> = {
       'new': 'PENDING',
       'partially_filled': 'OPEN',
       'filled': 'FILLED',
       'cancelled': 'CANCELLED',
       'rejected': 'CANCELLED',
       'expired': 'CANCELLED',
+      'pending_new': 'PENDING',
+      'accepted': 'OPEN',
+      'pending_cancel': 'PENDING',
+      'stopped': 'CANCELLED',
     };
     return map[status] || 'PENDING';
   }
@@ -264,10 +268,23 @@ interface AlpacaPositionResponse {
 
 interface AlpacaOrderResponse {
   id: string;
-  status: string;
+  status: AlpacaOrderStatus;
   filled_qty: number;
-  filled_avg_price: number;
+  filled_avg_price: number | null;
   qty: number;
   created_at: string;
   updated_at: string;
 }
+
+// Alpaca order status values
+type AlpacaOrderStatus =
+  | 'new'
+  | 'partially_filled'
+  | 'filled'
+  | 'cancelled'
+  | 'rejected'
+  | 'expired'
+  | 'pending_new'
+  | 'accepted'
+  | 'pending_cancel'
+  | 'stopped';

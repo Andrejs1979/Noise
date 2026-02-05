@@ -393,11 +393,11 @@ export function calculateADX(
   // Calculate ADX as EMA of DX
   const adx = calculateEMA(dx, period);
 
-  // Align ADX with DI values (they start at different points due to initial smoothing)
+  // Align ADX with DI values - both arrays start at same point after smoothing
   return adx.map((a, i) => ({
     adx: a,
-    pdi: pdiValues[i + period - 1] || 25,
-    ndi: ndiValues[i + period - 1] || 25,
+    pdi: pdiValues[i] ?? 25,
+    ndi: ndiValues[i] ?? 25,
   }));
 }
 
