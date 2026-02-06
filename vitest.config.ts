@@ -9,6 +9,11 @@ export default defineConfig({
         DB: 'D1Database',
       },
     },
+    include: ['tests/**/*.test.ts'],
+    exclude: [
+      'node_modules/',
+      'dashboard/',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
