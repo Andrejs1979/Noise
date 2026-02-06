@@ -5,59 +5,59 @@
 
 import { Router } from 'itty-router';
 import { createLogger } from './utils/index.js';
-import { corsPreflightResponse } from './middleware/cors.js';
+import {
+  corsPreflightResponse,
+  withApiHeaders,
+} from './middleware/cors.js';
 
-// Type for signal creation
-interface CreateSignalRequest {
+// Validation schemas are imported from middleware/validation.ts
+// Re-exporting types for convenience
+type CreateSignalRequest = {
   signal: {
     symbol: string;
-    assetClass?: string;
-    timeframe?: string;
-    direction: string;
+    assetClass?: 'FUTURES' | 'EQUITY';
+    direction: 'LONG' | 'SHORT';
     strength: number;
     entryPrice: number;
     stopLoss: number;
     takeProfit?: number;
+    timeframe?: string;
     strategy?: string;
     reasons?: string[];
     expiresAt?: number;
   };
-}
+};
 
-// Type for signal updates
-interface UpdateSignalRequest {
-  status?: string;
+type UpdateSignalRequest = {
+  status?: 'ACTIVE' | 'EXPIRED' | 'EXECUTED' | 'CANCELLED';
   strength?: number;
   stopLoss?: number;
   takeProfit?: number;
   reasons?: string[];
-}
+};
 
-// Type for trade creation
-interface CreateTradeRequest {
+type QuotesRequest = {
+  symbols: string[];
+};
+
+type CreateTradeRequest = {
   trade: {
     symbol: string;
-    assetClass: string;
-    broker: string;
-    side: string;
+    assetClass: 'FUTURES' | 'EQUITY';
+    broker: 'tradovate' | 'alpaca';
+    side: 'BUY' | 'SELL';
     quantity: number;
-    orderType: string;
+    orderType: 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
     limitPrice?: number;
     signalId?: string;
   };
-}
+};
 
-// Type for trade updates
-interface UpdateTradeRequest {
-  status?: string;
+type UpdateTradeRequest = {
+  status?: 'PENDING' | 'FILLED' | 'PARTIALLY_FILLED' | 'CANCELLED' | 'REJECTED';
   filledQuantity?: number;
   avgFillPrice?: number;
-}
-
-// Type for quotes request
-interface QuotesRequest {
-  symbols: string[];
-}
+};
 
 const log = createLogger('MAIN');
 
@@ -107,37 +107,25 @@ async function authenticate(request: Request, env: Env): Promise<Response | null
   const authHeader = request.headers.get('Authorization');
 
   if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return errorResponse('Missing authorization header', request, env, 401);
   }
 
   // Extract token using regex to handle "Bearer" prefix safely
   const bearerMatch = authHeader.match(/^Bearer\s+(\S+)$/i);
   if (!bearerMatch) {
-    return new Response(JSON.stringify({ error: 'Invalid authorization format' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return errorResponse('Invalid authorization format', request, env, 401);
   }
 
   const token = bearerMatch[1];
   const expectedKey = env.NOISE_API_KEY;
 
   if (!expectedKey) {
-    return new Response(JSON.stringify({ error: 'Server not configured' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return errorResponse('Server not configured', request, env, 500);
   }
 
   // Use timing-safe comparison to prevent timing attacks
   if (token.length !== expectedKey.length) {
-    return new Response(JSON.stringify({ error: 'Invalid API key' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return errorResponse('Invalid API key', request, env, 403);
   }
 
   // Constant-time comparison
@@ -156,6 +144,32 @@ async function authenticate(request: Request, env: Env): Promise<Response | null
   }
 
   return null;
+}
+
+// =============================================================================
+// Response Helpers
+// =============================================================================
+
+/**
+ * Create a JSON response with CORS and security headers
+ */
+function jsonResponse(data: unknown, request: Request, env: Env, status: number = 200): Response {
+  const response = new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return withApiHeaders(response, request, env.ENVIRONMENT);
+}
+
+/**
+ * Create an error response with CORS and security headers
+ */
+function errorResponse(error: string, request: Request, env: Env, status: number = 500): Response {
+  const response = new Response(JSON.stringify({ error }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return withApiHeaders(response, request, env.ENVIRONMENT);
 }
 
 // =============================================================================
@@ -189,7 +203,7 @@ router.get('/api/status', async (request: Request, env: Env) => {
       'SELECT COUNT(*) as count FROM positions'
     ).first();
 
-    return Response.json({
+    return jsonResponse({
       status: 'ok',
       environment: env.ENVIRONMENT || 'unknown',
       circuitBreaker: {
@@ -206,10 +220,10 @@ router.get('/api/status', async (request: Request, env: Env) => {
         consecutiveLosses: riskState?.consecutive_losses ?? 0,
       },
       timestamp: Date.now(),
-    });
+    }, request, env);
   } catch (error) {
     log.error('Status endpoint error', error as Error);
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
+    return errorResponse('Internal server error', request, env, 500);
   }
 });
 
