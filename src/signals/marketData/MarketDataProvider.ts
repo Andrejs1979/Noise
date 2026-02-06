@@ -145,8 +145,24 @@ export class RestMarketDataProvider extends MarketDataProvider {
 
       return ohlcv;
     } catch (error) {
-      log.error(`Failed to fetch historical data for ${symbol}`, error as Error);
-      return [];
+      const errorDetails = {
+        symbol,
+        timeframe,
+        limit,
+        startTime,
+        endTime,
+        baseUrl: this.baseUrl,
+      };
+
+      // Handle different error types appropriately
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        log.error('Network error fetching historical data', error as Error, errorDetails);
+        throw new Error(`Network error fetching ${symbol} data: ${error.message}`);
+      }
+
+      log.error(`Failed to fetch historical data for ${symbol}`, error as Error, errorDetails);
+      // Re-throw instead of returning empty array
+      throw new Error(`Failed to fetch historical data for ${symbol}: ${(error as Error).message}`);
     }
   }
 
@@ -167,6 +183,12 @@ export class RestMarketDataProvider extends MarketDataProvider {
           'Content-Type': 'application/json',
         },
       });
+
+      // Return null for 404 (symbol not found) - this is a legitimate response
+      if (response.status === 404) {
+        log.warn(`Symbol not found: ${symbol}`);
+        return null;
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -190,8 +212,14 @@ export class RestMarketDataProvider extends MarketDataProvider {
 
       return quote;
     } catch (error) {
-      log.error(`Failed to fetch quote for ${symbol}`, error as Error);
-      return null;
+      // Re-throw HTTP errors (not 404) and network errors
+      if (error instanceof Error && error.message.startsWith('HTTP')) {
+        log.error(`Failed to fetch quote for ${symbol}`, error as Error, { symbol, baseUrl: this.baseUrl });
+        throw error; // Re-throw HTTP errors
+      }
+
+      log.error(`Failed to fetch quote for ${symbol}`, error as Error, { symbol, baseUrl: this.baseUrl });
+      throw new Error(`Network error fetching quote for ${symbol}: ${(error as Error).message}`);
     }
   }
 

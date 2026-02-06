@@ -52,8 +52,15 @@ export class HistoricalDataFetcher {
 
       return data;
     } catch (error) {
-      log.error(`Failed to fetch historical data for ${symbol}`, error as Error);
-      return [];
+      log.error(`Failed to fetch historical data for ${symbol}`, error as Error, {
+        symbol,
+        timeframe,
+        limit: options?.limit,
+        startTime: options?.startTime,
+        endTime: options?.endTime,
+      });
+      // Re-throw to let caller handle the error instead of masking it with empty array
+      throw new Error(`Failed to fetch historical data for ${symbol}: ${(error as Error).message}`);
     }
   }
 

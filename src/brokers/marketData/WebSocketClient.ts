@@ -53,6 +53,8 @@ export class WebSocketClient {
   // For Cloudflare Workers, we'll use fetch-based polling as a fallback
   // until proper WebSocket client support is available
   private pollingTimer: ReturnType<typeof setInterval> | null = null;
+  private consecutiveErrors = 0;
+  private readonly MAX_CONSECUTIVE_ERRORS = 5;
 
   constructor(_config: WebSocketClientConfig) {
     // Config will be used when WebSocket client is fully implemented
@@ -154,14 +156,35 @@ export class WebSocketClient {
           handler(update);
         }
       }
+      // Reset error count on success
+      this.consecutiveErrors = 0;
     } catch (error) {
-      log.error('Failed to fetch market data', error as Error);
+      this.consecutiveErrors++;
+      log.error('Failed to fetch market data', error as Error, {
+        consecutiveErrors: this.consecutiveErrors,
+        maxErrors: this.MAX_CONSECUTIVE_ERRORS,
+      });
+
+      // Stop polling after repeated failures
+      if (this.consecutiveErrors >= this.MAX_CONSECUTIVE_ERRORS) {
+        this.isConnected = false;
+        this.notifyConnectionChange(false);
+        this.clearPollingTimer();
+        log.error('Market data fetch failed repeatedly, stopping polling', error as Error);
+      }
     }
   }
 
   private notifyConnectionChange(connected: boolean): void {
     for (const handler of this.connectionHandlers) {
-      handler(connected);
+      try {
+        handler(connected);
+      } catch (error) {
+        log.error('Connection handler error', error as Error, {
+          connected,
+          handlerCount: this.connectionHandlers.size,
+        });
+      }
     }
   }
 

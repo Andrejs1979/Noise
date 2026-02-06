@@ -37,6 +37,8 @@ export class RealTimeDataFeed {
   private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private isRunning = false;
   private lastQuotes = new Map<string, Quote>();
+  private consecutiveErrors = 0;
+  private readonly MAX_POLL_ERRORS = 10;
 
   constructor(private pollIntervalMs: number = 1000) {
     // 1 second default for polling
@@ -152,8 +154,21 @@ export class RealTimeDataFeed {
           this.notifySubscribers(symbol, update);
         }
       }
+
+      // Reset error count on success
+      this.consecutiveErrors = 0;
     } catch (error) {
-      log.error('Polling error', error as Error);
+      this.consecutiveErrors++;
+      log.error('Polling error', error as Error, {
+        consecutiveErrors: this.consecutiveErrors,
+        symbols,
+      });
+
+      // Stop polling after repeated failures
+      if (this.consecutiveErrors >= this.MAX_POLL_ERRORS) {
+        this.stop();
+        log.error('Polling failed repeatedly, stopping real-time feed', error as Error);
+      }
     }
   }
 
@@ -164,7 +179,10 @@ export class RealTimeDataFeed {
         try {
           callback(update);
         } catch (error) {
-          log.error('Subscriber callback error', error as Error);
+          log.error('Subscriber callback error', error as Error, {
+            symbol,
+            subscriberCount: subs.size,
+          });
         }
       }
     }
