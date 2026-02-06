@@ -3,7 +3,6 @@
  * Displays open positions with unrealized P&L
  */
 
-import React from 'react';
 import { usePositions, type Position } from '../hooks/usePositions';
 
 interface PnLValueProps {
@@ -75,7 +74,7 @@ export default function PositionsTable() {
 
       {data.length === 0 ? (
         <div className="text-center py-8 text-gray-500">
-          <p>No open positions</p>
+          <p>{error ? 'Failed to load positions' : 'No open positions'}</p>
         </div>
       ) : (
         <div className="overflow-x-auto">

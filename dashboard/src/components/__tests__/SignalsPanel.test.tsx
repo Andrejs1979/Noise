@@ -61,7 +61,7 @@ describe('SignalsPanel', () => {
     expect(screen.getByText('Active Signals')).toBeInTheDocument();
     expect(screen.getByText('MNQH4')).toBeInTheDocument();
     expect(screen.getByText('85%')).toBeInTheDocument();
-    expect(screen.getByText('Momentum Strategy')).toBeInTheDocument();
+    expect(screen.getByText('momentum')).toBeInTheDocument();
   });
 
   it('shows empty state when no signals', () => {

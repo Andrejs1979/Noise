@@ -51,7 +51,7 @@ describe('RiskMetrics', () => {
     render(<RiskMetrics />);
 
     expect(screen.getByText('Risk Metrics')).toBeInTheDocument();
-    expect(screen.getByText(/\+1250\.50/)).toBeInTheDocument();
+    expect(screen.getByText(/\+\$1250\.50/)).toBeInTheDocument();
   });
 
   it('shows circuit breaker as triggered when active', () => {
@@ -73,7 +73,7 @@ describe('RiskMetrics', () => {
 
     render(<RiskMetrics />);
 
-    expect(screen.getByText(/circuit breaker.*triggered/i)).toBeInTheDocument();
+    expect(screen.getByText(/TRIGGERED/)).toBeInTheDocument();
     expect(screen.getByText(/Daily loss limit exceeded/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /reset circuit breaker/i })).toBeInTheDocument();
   });
