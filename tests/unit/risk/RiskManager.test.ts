@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { RiskManager } from '../../../src/risk/RiskManager.js';
-import type { RiskConfig, Signal } from '../../../src/types/index.js';
+import { RiskManager } from '@/risk/RiskManager.js';
+import type { RiskConfig, Signal } from '@/types/index.js';
 
 describe('RiskManager', () => {
   let riskManager: RiskManager;

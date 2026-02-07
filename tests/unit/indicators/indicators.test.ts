@@ -12,7 +12,7 @@ import {
   calculateATR,
   calculateADX,
   calculateVolume,
-} from '../../../src/signals/indicators/indicators.js';
+} from '@/signals/indicators/indicators.js';
 
 describe('Indicator Utilities', () => {
   describe('calculateSMA', () => {

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TrailingStopManager } from '../../../src/risk/TrailingStopManager.js';
+import { TrailingStopManager } from '@/risk/TrailingStopManager.js';
 
 describe('TrailingStopManager', () => {
   let manager: TrailingStopManager;
@@ -164,6 +164,94 @@ describe('TrailingStopManager', () => {
       expect(allStops.size).toBe(2);
       expect(allStops.has('pos-1')).toBe(true);
       expect(allStops.has('pos-2')).toBe(true);
+    });
+  });
+
+  describe('input validation', () => {
+    it('does not update stop when current price is zero', () => {
+      manager.addPosition('pos-1', 'MNQ', 'LONG', 15000, 14900);
+      const initialStop = manager.getStopLevel('pos-1');
+
+      // Update with zero price should not change the stop
+      const prices = new Map([['MNQ', 0]]);
+      const updates = manager.updateStops(prices);
+
+      expect(updates.size).toBe(0);
+      expect(manager.getStopLevel('pos-1')).toBe(initialStop);
+    });
+
+    it('does not update stop when current price is negative', () => {
+      manager.addPosition('pos-1', 'MNQ', 'LONG', 15000, 14900);
+      const initialStop = manager.getStopLevel('pos-1');
+
+      // Update with negative price should not change the stop
+      const prices = new Map([['MNQ', -100]]);
+      const updates = manager.updateStops(prices);
+
+      expect(updates.size).toBe(0);
+      expect(manager.getStopLevel('pos-1')).toBe(initialStop);
+    });
+
+    it('skips position with no price data and logs warning', () => {
+      manager.addPosition('pos-1', 'MNQ', 'LONG', 15000, 14900);
+      const initialStop = manager.getStopLevel('pos-1');
+
+      // Update with no price data for MNQ
+      const prices = new Map([['MES', 4000]]);
+      const updates = manager.updateStops(prices);
+
+      expect(updates.size).toBe(0);
+      expect(manager.getStopLevel('pos-1')).toBe(initialStop);
+    });
+  });
+
+  describe('configuration validation', () => {
+    it('throws error when trailPercent is zero', () => {
+      expect(() => {
+        new TrailingStopManager({ trailPercent: 0 });
+      }).toThrow('trailPercent must be positive');
+    });
+
+    it('throws error when trailPercent is negative', () => {
+      expect(() => {
+        new TrailingStopManager({ trailPercent: -0.5 });
+      }).toThrow('trailPercent must be positive');
+    });
+
+    it('throws error when activationPercent is negative', () => {
+      expect(() => {
+        new TrailingStopManager({ activationPercent: -0.1 });
+      }).toThrow('activationPercent must be non-negative');
+    });
+
+    it('throws error when minTrailPercent is zero', () => {
+      expect(() => {
+        new TrailingStopManager({ minTrailPercent: 0 });
+      }).toThrow('minTrailPercent must be positive');
+    });
+
+    it('throws error when updateIntervalSeconds is zero', () => {
+      expect(() => {
+        new TrailingStopManager({ updateIntervalSeconds: 0 });
+      }).toThrow('updateIntervalSeconds must be positive');
+    });
+
+    it('validates config on updateConfig', () => {
+      const validManager = new TrailingStopManager();
+      expect(() => {
+        validManager.updateConfig({ trailPercent: 0 });
+      }).toThrow('trailPercent must be positive');
+    });
+
+    it('accepts valid configuration values', () => {
+      expect(() => {
+        new TrailingStopManager({
+          trailPercent: 1.0,
+          activationPercent: 0.5,
+          minTrailPercent: 0.3,
+          updateIntervalSeconds: 30,
+        });
+      }).not.toThrow();
     });
   });
 });

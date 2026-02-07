@@ -3,9 +3,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { MomentumStrategy } from '../../../src/signals/strategies/MomentumStrategy.js';
-import { MeanReversionStrategy } from '../../../src/signals/strategies/MeanReversionStrategy.js';
-import { BreakoutStrategy } from '../../../src/signals/strategies/BreakoutStrategy.js';
+import { MomentumStrategy } from '@/signals/strategies/MomentumStrategy.js';
+import { MeanReversionStrategy } from '@/signals/strategies/MeanReversionStrategy.js';
+import { BreakoutStrategy } from '@/signals/strategies/BreakoutStrategy.js';
 
 describe('MomentumStrategy', () => {
   it('instantiates with default config', () => {

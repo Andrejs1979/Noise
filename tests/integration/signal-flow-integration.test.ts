@@ -4,29 +4,56 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SignalManager } from '../../src/signals/SignalManager.js';
-import { RiskManager } from '../../src/risk/RiskManager.js';
-import type { Signal, PriceBar } from '../../src/types/index.js';
+import { SignalManager } from '@/signals/SignalManager.js';
+import { RiskManager } from '@/risk/RiskManager.js';
+import type { Signal, PriceBar } from '@/types/index.js';
 
-// Helper to generate mock price bars
+// Helper to generate mock price bars with deterministic values
 function generateBars(basePrice: number, count: number, trend: 'up' | 'down' | 'sideways' = 'sideways'): PriceBar[] {
   const bars: PriceBar[] = [];
   let price = basePrice;
   const now = Date.now();
 
+  // Use deterministic patterns based on trend
   for (let i = 0; i < count; i++) {
-    const change = trend === 'up' ? Math.random() * 10 - 2 :
-                   trend === 'down' ? Math.random() * 10 - 8 :
-                   Math.random() * 10 - 5;
+    let change: number;
+    let highOffset: number;
+    let lowOffset: number;
+    let closeOffset: number;
+    let volume: number;
+
+    if (trend === 'up') {
+      // Upward trend with small dips
+      change = 5 + (i % 3) * 2; // 5, 7, 9 repeating
+      highOffset = 3 + (i % 2);
+      lowOffset = -1;
+      closeOffset = 2 + (i % 2);
+      volume = 5000 + (i % 5) * 1000;
+    } else if (trend === 'down') {
+      // Downward trend with small rallies
+      change = -5 - (i % 3) * 2; // -5, -7, -9 repeating
+      highOffset = 1;
+      lowOffset = -3 - (i % 2);
+      closeOffset = -2 - (i % 2);
+      volume = 5000 + (i % 5) * 1000;
+    } else {
+      // Sideways with oscillation
+      change = (i % 2 === 0 ? 2 : -2);
+      highOffset = 2;
+      lowOffset = -2;
+      closeOffset = (i % 3 === 0 ? 1 : -1);
+      volume = 3000 + (i % 7) * 500;
+    }
+
     price += change;
 
     bars.push({
       timestamp: now - (count - i) * 60000, // 1 minute intervals
       open: price,
-      high: price + Math.random() * 5,
-      low: price - Math.random() * 5,
-      close: price + Math.random() * 2 - 1,
-      volume: Math.floor(Math.random() * 10000) + 1000,
+      high: price + highOffset,
+      low: price + lowOffset,
+      close: price + closeOffset,
+      volume,
     });
   }
 
@@ -79,10 +106,12 @@ describe('Signal Flow Integration', () => {
 
       // Verify the signal pipeline processes data correctly
       expect(Array.isArray(signals)).toBe(true);
+      expect(signals.length).toBeGreaterThan(0); // Upward trend should generate signals
       expect(signals.length).toBeLessThanOrEqual(2); // maxSignalsPerSymbol
     });
 
     it('generates SHORT signals from downward trending market', async () => {
+      // Use a stronger downward trend for better signal generation
       const bars = generateBars(15000, 100, 'down');
 
       const signals = await signalManager.generateSignals({
@@ -92,9 +121,9 @@ describe('Signal Flow Integration', () => {
         timeframe: '15m',
       });
 
-      // Note: Signal generation depends on market conditions and strategy configuration
-      // This test verifies the pipeline processes the data correctly
       expect(Array.isArray(signals)).toBe(true);
+      // Signal generation depends on strategy detection - may or may not generate SHORT signals
+      // The important thing is the pipeline processes correctly
       expect(signals.length).toBeLessThanOrEqual(2); // maxSignalsPerSymbol
     });
 
@@ -108,8 +137,10 @@ describe('Signal Flow Integration', () => {
         timeframe: '15m',
       });
 
+      expect(Array.isArray(signals)).toBe(true);
+      // All generated signals should meet the minimum strength threshold
       for (const signal of signals) {
-        expect(signal.strength).toBeGreaterThanOrEqual(0.6);
+        expect(signal.strength).toBeGreaterThanOrEqual(0.3); // Matches minStrength config
       }
     });
 
@@ -123,6 +154,7 @@ describe('Signal Flow Integration', () => {
         timeframe: '15m',
       });
 
+      // The key test is that we never exceed the max
       expect(signals.length).toBeLessThanOrEqual(2);
     });
   });
@@ -138,10 +170,7 @@ describe('Signal Flow Integration', () => {
         timeframe: '15m',
       });
 
-      if (signals.length === 0) {
-        // Skip if no signals generated
-        return;
-      }
+      expect(signals.length).toBeGreaterThan(0, 'Upward trend should generate signals');
 
       const signal = signals[0];
 
@@ -175,17 +204,25 @@ describe('Signal Flow Integration', () => {
         timeframe: '15m',
       });
 
-      if (signals.length === 0) {
-        return;
-      }
-
+      expect(signals.length).toBeGreaterThan(0, 'Upward trend should generate signals');
       const signal = signals[0];
 
       const account = {
         totalEquity: 100000,
         totalCash: 50000,
         totalBuyingPower: 200000,
-        positions: Array(5).fill({ symbol: 'TEST', quantity: 1 }), // At max
+        positions: Array.from({ length: 5 }, () => ({
+          symbol: 'TEST',
+          quantity: 1,
+          side: 'LONG' as const,
+          entryPrice: 100,
+          currentPrice: 100,
+          marketValue: 100,
+          unrealizedPnl: 0,
+          assetClass: 'EQUITY' as const,
+          broker: 'ALPACA' as const,
+          updatedAt: Date.now(),
+        })),
         realizedPnl: 1000,
         unrealizedPnl: 500,
         marginUsed: 0,
@@ -214,10 +251,7 @@ describe('Signal Flow Integration', () => {
         timeframe: '15m',
       });
 
-      if (signals.length === 0) {
-        // No signals generated, which is valid
-        return;
-      }
+      expect(signals.length).toBeGreaterThan(0, 'Upward trend should generate signals');
 
       // 3. Evaluate risk
       const account = {

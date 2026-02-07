@@ -147,35 +147,36 @@ export class PortfolioExposureManager {
       });
     }
 
-    // Check net short
-    if (metrics.netShortPercent < this.constraints.maxNetShort * 100) {
+    // Check net short (maxNetShort is negative, e.g., -0.5 for -50%)
+    // We check if the short exposure exceeds the absolute value of the limit
+    if (metrics.netShortPercent > Math.abs(this.constraints.maxNetShort) * 100) {
       violations.push({
         type: 'NET_SHORT',
         severity: 'ERROR',
-        message: `Net short exposure ${metrics.netShortPercent.toFixed(1)}% exceeds limit`,
+        message: `Net short exposure ${metrics.netShortPercent.toFixed(1)}% exceeds ${Math.abs(this.constraints.maxNetShort) * 100}%`,
         currentValue: metrics.netShortPercent,
-        limitValue: this.constraints.maxNetShort * 100,
+        limitValue: Math.abs(this.constraints.maxNetShort) * 100,
       });
     }
 
     // Check correlation groups
     for (const [groupName, exposure] of metrics.correlationExposure.entries()) {
-      if (exposure.concentration > exposure.limit * 100) {
+      if (exposure.concentration > exposure.limit) {
         violations.push({
           type: 'CORRELATION',
           severity: 'ERROR',
-          message: `${groupName} exposure ${exposure.concentration.toFixed(1)}% exceeds ${exposure.limit * 100}%`,
+          message: `${groupName} exposure ${exposure.concentration.toFixed(1)}% exceeds ${exposure.limit.toFixed(0)}%`,
           currentValue: exposure.concentration,
-          limitValue: exposure.limit * 100,
+          limitValue: exposure.limit,
         });
-      } else if (exposure.concentration > exposure.limit * 80) {
+      } else if (exposure.concentration > exposure.limit * 0.8) {
         // Warning at 80% of limit
         violations.push({
           type: 'CORRELATION',
           severity: 'WARNING',
-          message: `${groupName} exposure approaching limit (${exposure.concentration.toFixed(1)}% of ${exposure.limit * 100}%)`,
+          message: `${groupName} exposure approaching limit (${exposure.concentration.toFixed(1)}% of ${exposure.limit.toFixed(0)}%)`,
           currentValue: exposure.concentration,
-          limitValue: exposure.limit * 100,
+          limitValue: exposure.limit,
         });
       }
     }
@@ -195,11 +196,11 @@ export class PortfolioExposureManager {
     side: 'LONG' | 'SHORT',
     quantity: number,
     price: number,
-    account: AggregatedAccount
+    account: AggregatedAccount,
+    assetClass: 'FUTURES' | 'EQUITY' = 'EQUITY'
   ): { allowed: boolean; violations: ExposureViolation[]; warnings: string[] } {
     const orderValue = quantity * price;
     const mockPosition: UnifiedPosition = {
-      id: 'temp-check',
       symbol,
       side,
       quantity,
@@ -207,8 +208,9 @@ export class PortfolioExposureManager {
       currentPrice: price,
       marketValue: orderValue,
       unrealizedPnl: 0,
-      assetClass: 'EQUITY',
-      broker: 'TRADOVATE',
+      assetClass,
+      broker: assetClass === 'FUTURES' ? 'TRADOVATE' : 'ALPACA',
+      updatedAt: Date.now(),
     };
 
     const mockAccount: AggregatedAccount = {
@@ -217,8 +219,12 @@ export class PortfolioExposureManager {
       exposure: {
         ...account.exposure,
         total: account.exposure.total + orderValue,
-        [side === 'LONG' ? 'futures' : 'equities']: account.exposure.futures + orderValue,
-        [side === 'SHORT' ? 'futures' : 'equities']: account.exposure.equities + orderValue,
+        futures: assetClass === 'FUTURES'
+          ? account.exposure.futures + orderValue
+          : account.exposure.futures,
+        equities: assetClass === 'EQUITY'
+          ? account.exposure.equities + orderValue
+          : account.exposure.equities,
       },
     };
 
@@ -238,6 +244,29 @@ export class PortfolioExposureManager {
    */
   private calculateMetrics(account: AggregatedAccount) {
     const equity = account.totalEquity;
+
+    // Validate equity to prevent division by zero
+    if (equity <= 0) {
+      log.error('Invalid equity value for metrics calculation', undefined, {
+        equity,
+        accountId: account.positions.length > 0 ? 'account' : 'unknown',
+      });
+      // Return safe default values to prevent NaN/Infinity propagation
+      return {
+        totalExposure: 0,
+        totalExposurePercent: 0,
+        grossExposure: 0,
+        grossExposurePercent: 0,
+        netExposure: 0,
+        netExposurePercent: 0,
+        longExposure: 0,
+        shortExposure: 0,
+        netLongPercent: 0,
+        netShortPercent: 0,
+        sectorBreakdown: new Map(),
+        correlationExposure: new Map(),
+      };
+    }
 
     let longExposure = 0;
     let shortExposure = 0;
@@ -304,6 +333,16 @@ export class PortfolioExposureManager {
    */
   getSymbolConcentration(symbol: string, account: AggregatedAccount): number {
     const equity = account.totalEquity;
+
+    // Validate equity to prevent division by zero
+    if (equity <= 0) {
+      log.error('Invalid equity for symbol concentration calculation', undefined, {
+        symbol,
+        equity,
+      });
+      return 0;
+    }
+
     const symbolExposure = account.positions
       .filter(p => p.symbol === symbol)
       .reduce((sum, p) => sum + (p.marketValue || (p.quantity * p.currentPrice)), 0);

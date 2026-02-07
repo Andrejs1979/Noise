@@ -42,6 +42,34 @@ export class TrailingStopManager {
 
   constructor(config?: Partial<TrailingStopConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.validateConfig(this.config);
+  }
+
+  /**
+   * Validate configuration values
+   * @throws Error if configuration is invalid
+   */
+  private validateConfig(cfg: TrailingStopConfig): void {
+    if (cfg.trailPercent <= 0) {
+      const error = new Error('trailPercent must be positive');
+      log.error('Invalid trailPercent configuration', error, { trailPercent: cfg.trailPercent });
+      throw error;
+    }
+    if (cfg.activationPercent < 0) {
+      const error = new Error('activationPercent must be non-negative');
+      log.error('Invalid activationPercent configuration', error, { activationPercent: cfg.activationPercent });
+      throw error;
+    }
+    if (cfg.minTrailPercent <= 0) {
+      const error = new Error('minTrailPercent must be positive');
+      log.error('Invalid minTrailPercent configuration', error, { minTrailPercent: cfg.minTrailPercent });
+      throw error;
+    }
+    if (cfg.updateIntervalSeconds <= 0) {
+      const error = new Error('updateIntervalSeconds must be positive');
+      log.error('Invalid updateIntervalSeconds configuration', error, { updateIntervalSeconds: cfg.updateIntervalSeconds });
+      throw error;
+    }
   }
 
   /**
@@ -89,6 +117,18 @@ export class TrailingStopManager {
    */
   calculateNewStop(currentPrice: number, state: TrailingStopState): number | null {
     const { side, entryPrice, initialStop, highestPrice, lowestPrice } = state;
+
+    // Validate inputs to prevent NaN/Infinity from invalid prices
+    if (currentPrice <= 0 || entryPrice <= 0 || initialStop <= 0) {
+      log.error('Invalid price values for trailing stop calculation', undefined, {
+        positionId: state.positionId,
+        currentPrice,
+        entryPrice,
+        initialStop,
+      });
+      return null;
+    }
+
     const profitPercent = side === 'LONG'
       ? (currentPrice - entryPrice) / entryPrice * 100
       : (entryPrice - currentPrice) / entryPrice * 100;
@@ -149,7 +189,13 @@ export class TrailingStopManager {
 
     for (const [positionId, state] of this.stops.entries()) {
       const currentPrice = currentPrices.get(state.symbol);
-      if (!currentPrice) continue;
+      if (!currentPrice) {
+        log.warn('Skipping trailing stop update: no price data', {
+          positionId,
+          symbol: state.symbol,
+        });
+        continue;
+      }
 
       // Update highest/lowest tracking
       if (state.side === 'LONG') {
@@ -218,6 +264,7 @@ export class TrailingStopManager {
    */
   updateConfig(updates: Partial<TrailingStopConfig>): void {
     this.config = { ...this.config, ...updates };
+    this.validateConfig(this.config);
     log.info('Trailing stop config updated', { updates });
   }
 
