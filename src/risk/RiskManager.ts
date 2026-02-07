@@ -5,23 +5,22 @@
 
 import type {
   RiskConfig,
-  RiskDecision,
   RiskEvaluation,
   PositionSize,
   ExposureCheck,
   CircuitBreakerStatus,
+  RiskCheck,
 } from '@/types/risk.js';
-import type { Signal, AssetClass } from '@/types/index.js';
+import type { Signal } from '@/types/index.js';
 import type { AggregatedAccount, UnifiedPosition } from '@/types/index.js';
 import { DEFAULT_RISK_CONFIG } from '@/config/risk.js';
-import { createLogger } from '@/utils/index.js';
+import { createLogger, roundTo } from '@/utils/index.js';
 
 const log = createLogger('RISK_MANAGER');
 
 export class RiskManager {
   private config: RiskConfig;
   private circuitBreakerUntil: number | null = null;
-  private circuitBreakerType: 'DAILY_LOSS' | 'WEEKLY_LOSS' | 'DRAWDOWN' | 'CONSECUTIVE_LOSSES' | 'POSITION_LIMIT' | null = null;
 
   constructor(config?: Partial<RiskConfig>) {
     this.config = { ...DEFAULT_RISK_CONFIG, ...config };
@@ -35,7 +34,7 @@ export class RiskManager {
     signal: Signal,
     account: AggregatedAccount
   ): Promise<RiskEvaluation> {
-    const checks: Array<{ name: string; passed: boolean; reason: string; severity: string }> = [];
+    const checks: RiskCheck[] = [];
 
     // 1. Check circuit breaker
     const circuitBreakerStatus = this.getCircuitBreakerStatus();
@@ -147,38 +146,31 @@ export class RiskManager {
   // ========================================================================
 
   private calculatePositionSize(signal: Signal, account: AggregatedAccount): PositionSize {
-    // Validate inputs
-    if (account.totalEquity <= 0) {
-      return { quantity: 0, notionalValue: 0, riskAmount: 0, method: 'volatility', reasoning: 'Invalid equity value' };
-    }
-    if (signal.entryPrice <= 0 || !Number.isFinite(signal.entryPrice)) {
-      return { quantity: 0, notionalValue: 0, riskAmount: 0, method: 'volatility', reasoning: 'Invalid entry price' };
-    }
-    if (!signal.stopLoss || !Number.isFinite(signal.stopLoss)) {
-      return { quantity: 0, notionalValue: 0, riskAmount: 0, method: 'volatility', reasoning: 'Invalid stop loss' };
+    const equity = account.totalEquity;
+
+    // Guard against division by zero
+    if (equity <= 0) {
+      log.error('Invalid equity value for position sizing', undefined, { equity, source: 'account data' });
+      return {
+        quantity: 0,
+        notionalValue: 0,
+        riskAmount: 0,
+        method: 'volatility',
+        reasoning: 'No equity available',
+      };
     }
 
-    const equity = account.totalEquity;
     const riskAmount = equity * (this.config.maxRiskPerTradePercent / 100);
 
-    // Calculate stop distance with proper direction validation
-    const isLong = signal.direction === 'LONG';
-    const stopDistance = isLong
-      ? signal.entryPrice - signal.stopLoss  // Should be positive for valid long
-      : signal.stopLoss - signal.entryPrice;  // Should be positive for valid short
-
-    if (stopDistance <= 0) {
-      return { quantity: 0, notionalValue: 0, riskAmount: 0, method: 'volatility', reasoning: `Invalid stop loss for ${signal.direction} position` };
-    }
-
+    // Calculate stop distance
+    const stopDistance = signal.entryPrice - signal.stopLoss;
     const stopDistancePercent = Math.abs(stopDistance / signal.entryPrice);
 
     // Volatility-adjusted sizing
-    let quantity = riskAmount / stopDistance;
+    let quantity = riskAmount / Math.abs(stopDistance);
 
-    // Clamp and apply signal strength adjustment
-    const clampedStrength = Math.max(0, Math.min(1, signal.strength));
-    quantity = quantity * (0.5 + clampedStrength * 0.5); // 50% to 100% based on strength
+    // Apply signal strength adjustment
+    quantity = quantity * (0.5 + signal.strength * 0.5); // 50% to 100% based on strength
 
     // Ensure minimum order size
     const minQuantity = this.config.minOrderValue / signal.entryPrice;
@@ -188,8 +180,8 @@ export class RiskManager {
     const maxQuantity = this.config.maxOrderValue / signal.entryPrice;
     quantity = Math.min(quantity, maxQuantity);
 
-    // Round to valid quantity and ensure non-negative
-    quantity = Math.max(0, Math.floor(quantity * 100) / 100);
+    // Round to valid quantity
+    quantity = roundTo(quantity, 2);
 
     const notionalValue = quantity * signal.entryPrice;
 
@@ -214,12 +206,16 @@ export class RiskManager {
     const violations: string[] = [];
     const warnings: string[] = [];
 
-    // Validate equity
+    // Guard against invalid equity
     if (account.totalEquity <= 0) {
       violations.push('Cannot check exposure: invalid equity value');
       return {
         withinLimits: false,
-        currentExposure: account.exposure,
+        currentExposure: {
+          ...account.exposure,
+          byGroup: {},
+          longShort: { long: 0, short: 0, net: 0 },
+        },
         violations,
         warnings,
       };
@@ -234,8 +230,7 @@ export class RiskManager {
     const newTotalExposure = account.exposure.total + newPositionValue;
 
     // Check total exposure
-    const maxTotalExposure = this.config.maxTotalExposurePercent / 100 * account.totalEquity;
-    if (newTotalExposure > maxTotalExposure) {
+    if (newTotalExposure > this.config.maxTotalExposurePercent / 100 * account.totalEquity) {
       violations.push(`Total exposure ${(newTotalExposure / account.totalEquity * 100).toFixed(1)}% exceeds ${this.config.maxTotalExposurePercent}%`);
     }
 
@@ -267,7 +262,11 @@ export class RiskManager {
 
     return {
       withinLimits: violations.length === 0,
-      currentExposure: account.exposure,
+      currentExposure: {
+        ...account.exposure,
+        byGroup: {},
+        longShort: { long: 0, short: 0, net: 0 },
+      },
       violations,
       warnings,
     };
@@ -293,7 +292,7 @@ export class RiskManager {
 
     return {
       triggered,
-      type: this.circuitBreakerType,
+      type: triggered ? 'DAILY_LOSS' : undefined,
       reason: triggered ? 'Circuit breaker active' : null,
       until: this.circuitBreakerUntil,
       warningLevel: triggered ? 'DANGER' : 'OK',
@@ -301,19 +300,13 @@ export class RiskManager {
     };
   }
 
-  triggerCircuitBreaker(
-    reason: string,
-    type: 'DAILY_LOSS' | 'WEEKLY_LOSS' | 'DRAWDOWN' | 'CONSECUTIVE_LOSSES' | 'POSITION_LIMIT' = 'DAILY_LOSS',
-    durationMinutes: number = 60
-  ): void {
+  triggerCircuitBreaker(reason: string, durationMinutes: number = 60): void {
     this.circuitBreakerUntil = Date.now() + durationMinutes * 60 * 1000;
-    this.circuitBreakerType = type;
-    log.warn('Circuit breaker triggered', { reason, type, durationMinutes });
+    log.warn('Circuit breaker triggered', { reason, durationMinutes });
   }
 
   resetCircuitBreaker(): void {
     this.circuitBreakerUntil = null;
-    this.circuitBreakerType = null;
     log.info('Circuit breaker reset');
   }
 
