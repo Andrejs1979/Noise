@@ -11,11 +11,10 @@ import type {
   OrderResult,
   OrderStatusResult,
   AccountInfo,
-  OrderSide,
   PositionSide,
 } from '@/types/broker.js';
 import type { BrokerAdapter } from '../interfaces.js';
-import { createLogger, generateId, retryWithBackoff, BrokerError, OrderRejectedError } from '@/utils/index.js';
+import { createLogger, retryWithBackoff, BrokerError, OrderRejectedError } from '@/utils/index.js';
 
 const log = createLogger('ALPACA_ADAPTER');
 
@@ -74,14 +73,14 @@ export class AlpacaAdapter implements BrokerAdapter {
       throw new BrokerError(`Failed to get account: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as AlpacaAccountResponse;
 
     return {
       broker: 'ALPACA',
       accountId: data.id,
       equity: parseFloat(data.equity),
       cash: parseFloat(data.cash),
-      buyingPower: parseFloat(data.buying_power || data.buying_power),
+      buyingPower: parseFloat(data.buying_power),
       lastUpdated: Date.now(),
     };
   }
@@ -93,9 +92,9 @@ export class AlpacaAdapter implements BrokerAdapter {
       throw new BrokerError(`Failed to get positions: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as AlpacaPositionResponse[];
 
-    return (data || []).map((pos: any) => this.mapPosition(pos));
+    return (data || []).map((pos) => this.mapPosition(pos));
   }
 
   async placeOrder(order: UnifiedOrder): Promise<OrderResult> {
@@ -123,7 +122,7 @@ export class AlpacaAdapter implements BrokerAdapter {
       throw new BrokerError(`Order failed: ${error}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as AlpacaOrderResponse;
 
     log.info('Order placed', { orderId: data.id, symbol: order.symbol });
 
@@ -156,7 +155,7 @@ export class AlpacaAdapter implements BrokerAdapter {
       throw new BrokerError(`Status check failed: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as AlpacaOrderResponse;
 
     return {
       orderId,
@@ -176,9 +175,9 @@ export class AlpacaAdapter implements BrokerAdapter {
       throw new BrokerError(`Failed to get open orders: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as AlpacaOrderResponse[];
 
-    return (data || []).map((order: any) => ({
+    return (data || []).map((order) => ({
       orderId: order.id,
       status: this.mapOrderStatus(order.status),
       filledQuantity: order.filled_qty || 0,
@@ -208,7 +207,7 @@ export class AlpacaAdapter implements BrokerAdapter {
     });
   }
 
-  private mapPosition(pos: any): UnifiedPosition {
+  private mapPosition(pos: AlpacaPositionResponse): UnifiedPosition {
     const side: PositionSide = pos.side === 'long' ? 'LONG' : 'SHORT';
 
     return {
@@ -225,15 +224,66 @@ export class AlpacaAdapter implements BrokerAdapter {
     };
   }
 
-  private mapOrderStatus(status: string): 'PENDING' | 'OPEN' | 'FILLED' | 'CANCELLED' {
-    const map: Record<string, any> = {
+  private mapOrderStatus(status: AlpacaOrderStatus): 'PENDING' | 'OPEN' | 'FILLED' | 'CANCELLED' {
+    const validStatuses = ['PENDING', 'OPEN', 'FILLED', 'CANCELLED'] as const;
+    const map: Record<AlpacaOrderStatus, typeof validStatuses[number]> = {
       'new': 'PENDING',
       'partially_filled': 'OPEN',
       'filled': 'FILLED',
       'cancelled': 'CANCELLED',
       'rejected': 'CANCELLED',
       'expired': 'CANCELLED',
+      'pending_new': 'PENDING',
+      'accepted': 'OPEN',
+      'pending_cancel': 'PENDING',
+      'stopped': 'CANCELLED',
     };
     return map[status] || 'PENDING';
   }
 }
+
+// =============================================================================
+// Alpaca API Response Types
+// =============================================================================
+
+interface AlpacaAccountResponse {
+  id: string;
+  equity: string;
+  cash: string;
+  buying_power: string;
+  portfolio_value: string;
+}
+
+interface AlpacaPositionResponse {
+  symbol: string;
+  side: 'long' | 'short';
+  qty: number;
+  avg_entry_price: number;
+  current_price: number;
+  market_value: number;
+  unrealized_pl: number;
+  updated_at: string;
+}
+
+interface AlpacaOrderResponse {
+  id: string;
+  status: AlpacaOrderStatus;
+  filled_qty: number;
+  filled_avg_price: number | null;
+  qty: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Alpaca order status values
+type AlpacaOrderStatus =
+  | 'new'
+  | 'partially_filled'
+  | 'filled'
+  | 'cancelled'
+  | 'rejected'
+  | 'expired'
+  | 'pending_new'
+  | 'accepted'
+  | 'pending_cancel'
+  | 'stopped';

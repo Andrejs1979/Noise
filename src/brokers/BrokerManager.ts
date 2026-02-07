@@ -5,7 +5,6 @@
 
 import type {
   AssetClass,
-  BrokerType,
   UnifiedOrder,
   UnifiedPosition,
   AggregatedAccount,
@@ -24,8 +23,8 @@ export class BrokerManager {
   private alpaca: AlpacaAdapter;
 
   constructor(
-    private db: D1Database,
-    private config: {
+    _db: D1Database,
+    _config: {
       tradovate: {
         username: string;
         password: string;
@@ -44,17 +43,17 @@ export class BrokerManager {
     // Initialize Alpaca
     this.alpaca = new AlpacaAdapter(
       new AlpacaCredentials(
-        config.alpaca.apiKey,
-        config.alpaca.apiSecret,
-        config.alpaca.baseUrl
+        _config.alpaca.apiKey,
+        _config.alpaca.apiSecret,
+        _config.alpaca.baseUrl
       )
     );
 
     // Initialize Tradovate
     this.tradovate = new TradovateAdapter(
-      db,
-      config.tradovate,
-      config.tradovateLive || false
+      _db,
+      _config.tradovate,
+      _config.tradovateLive || false
     );
 
     // Map asset classes to adapters
@@ -76,14 +75,33 @@ export class BrokerManager {
   async getAccount(): Promise<AggregatedAccount> {
     log.debug('Fetching aggregated account...');
 
+    let tradovateError: Error | undefined;
+    let alpacaError: Error | undefined;
+
     const [tradovateAccount, alpacaAccount] = await Promise.all([
-      this.tradovate.getAccount().catch(() => null),
-      this.alpaca.getAccount().catch(() => null),
+      this.tradovate.getAccount().catch((e) => {
+        tradovateError = e as Error;
+        log.error('Failed to fetch Tradovate account', e as Error, { broker: 'TRADOVATE' });
+        return null;
+      }),
+      this.alpaca.getAccount().catch((e) => {
+        alpacaError = e as Error;
+        log.error('Failed to fetch Alpaca account', e as Error, { broker: 'ALPACA' });
+        return null;
+      }),
     ]);
 
-    const equity = (tradovateAccount?.equity || 0) + (alpacaAccount?.equity || 0);
-    const cash = (tradovateAccount?.cash || 0) + (alpacaAccount?.cash || 0);
-    const buyingPower = (tradovateAccount?.buyingPower || 0) + (alpacaAccount?.buyingPower || 0);
+    // Log warnings when brokers fail
+    if (tradovateError) {
+      log.warn('Tradovate account unavailable - using partial data', { error: tradovateError.message });
+    }
+    if (alpacaError) {
+      log.warn('Alpaca account unavailable - using partial data', { error: alpacaError.message });
+    }
+
+    const equity = (tradovateAccount?.equity ?? 0) + (alpacaAccount?.equity ?? 0);
+    const cash = (tradovateAccount?.cash ?? 0) + (alpacaAccount?.cash ?? 0);
+    const buyingPower = (tradovateAccount?.buyingPower ?? 0) + (alpacaAccount?.buyingPower ?? 0);
 
     // Get all positions
     const positions = await this.getAllPositions();
@@ -117,8 +135,14 @@ export class BrokerManager {
     log.debug('Fetching all positions...');
 
     const [tradovatePositions, alpacaPositions] = await Promise.all([
-      this.tradovate.getPositions().catch(() => []),
-      this.alpaca.getPositions().catch(() => []),
+      this.tradovate.getPositions().catch((e) => {
+        log.error('Failed to fetch Tradovate positions', e as Error, { broker: 'TRADOVATE' });
+        return [];
+      }),
+      this.alpaca.getPositions().catch((e) => {
+        log.error('Failed to fetch Alpaca positions', e as Error, { broker: 'ALPACA' });
+        return [];
+      }),
     ]);
 
     return [...tradovatePositions, ...alpacaPositions];
