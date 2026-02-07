@@ -201,9 +201,13 @@ export class TradovateAdapter implements BrokerAdapter {
   }
 
   private async fetchWithAuth(path: string, options?: RequestInit): Promise<Response> {
-    const token = await this.auth.getAccessToken();
-
     return await retryWithBackoff(async () => {
+      // Get fresh token on each retry attempt to handle token refresh
+      const token = await this.auth.getAccessToken();
+      if (!token) {
+        throw new BrokerError('Not authenticated');
+      }
+
       const response = await fetch(`${this.baseUrl}${path}`, {
         ...options,
         headers: {
