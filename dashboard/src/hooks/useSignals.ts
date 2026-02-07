@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { fetchJson } from '../api';
 
 export interface Signal {
   id: string;
@@ -21,6 +22,10 @@ export interface Signal {
   reasons: string;
   timestamp: number;
   expires_at: number;
+  // Aliases for camelCase compatibility
+  entryPrice?: number;
+  stopLoss?: number;
+  takeProfit?: number;
 }
 
 interface SignalsResponse {
@@ -57,28 +62,23 @@ export function useSignals(options: UseSignalsOptions = {}) {
     setError(null);
 
     try {
-      const url = new URL('/api/signals', window.location.origin);
+      let signals: Signal[];
 
       if (activeOnly) {
         // Use active signals endpoint
-        const response = await fetch('/api/signals/active');
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        const result: SignalsResponse = await response.json();
-        setData(result.signals);
+        const result = await fetchJson<SignalsResponse>('/api/signals/active');
+        signals = result.signals;
       } else {
         // Use full signals endpoint with filters
+        const url = new URL('/api/signals', window.location.origin);
         if (symbol) url.searchParams.set('symbol', symbol);
         if (strategy) url.searchParams.set('strategy', strategy);
 
-        const response = await fetch(url.toString());
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        const result: SignalsResponse = await response.json();
-        setData(result.signals);
+        const result = await fetchJson<SignalsResponse>(url.toString());
+        signals = result.signals;
       }
+
+      setData(signals);
     } catch (err) {
       setError(err as Error);
     } finally {

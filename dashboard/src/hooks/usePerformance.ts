@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { fetchJson } from '../api';
 
 export interface PerformanceSummary {
   totalTrades: number;
@@ -61,23 +62,17 @@ export function usePerformance(options: UsePerformanceOptions = {}) {
       const perfUrl = new URL('/api/performance', window.location.origin);
       perfUrl.searchParams.set('period', period);
 
-      const perfResponse = await fetch(perfUrl.toString());
-      if (!perfResponse.ok) {
-        throw new Error(`HTTP ${perfResponse.status}: ${perfResponse.statusText}`);
-      }
-
-      const perfData: PerformanceData = await perfResponse.json();
+      const perfData = await fetchJson<PerformanceData>(perfUrl.toString());
       setData(perfData);
 
       // Fetch equity curve separately for full history
       // Note: Equity curve is optional - dashboard remains functional without it
-      const equityResponse = await fetch('/api/performance/equity-curve?limit=1000');
-      if (equityResponse.ok) {
-        const equityData = await equityResponse.json();
+      try {
+        const equityData = await fetchJson<{ equityCurve: EquityPoint[] }>('/api/performance/equity-curve?limit=1000');
         setEquityCurve(equityData.equityCurve);
-      } else {
-        // Log non-200 responses for debugging but don't fail the request
-        console.warn(`Equity curve fetch failed: HTTP ${equityResponse.status}`);
+      } catch {
+        // Equity curve is optional - don't fail if it's not available
+        console.warn('Equity curve not available');
       }
     } catch (err) {
       setError(err as Error);
@@ -130,12 +125,7 @@ export function useEquityCurve(options: UseEquityCurveOptions = {}) {
       const url = new URL('/api/performance/equity-curve', window.location.origin);
       url.searchParams.set('limit', limit.toString());
 
-      const response = await fetch(url.toString());
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
+      const result = await fetchJson<{ equityCurve: EquityPoint[] }>(url.toString());
       setData(result.equityCurve);
     } catch (err) {
       setError(err as Error);

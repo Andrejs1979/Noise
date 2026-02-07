@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { fetchJson } from '../api';
 
 export interface Trade {
   id: string;
@@ -83,12 +84,7 @@ export function useTrades(options: UseTradesOptions = {}) {
       const queryString = queryParams.toString();
       const fetchUrl = queryString ? `${url}?${queryString}` : url;
 
-      const response = await fetch(fetchUrl);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result: TradesResponse = await response.json();
+      const result = await fetchJson<TradesResponse>(fetchUrl);
       setData(result.trades);
       // Use the total count from the API response for proper pagination
       setTotalCount(result.total);

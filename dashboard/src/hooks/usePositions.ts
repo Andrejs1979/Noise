@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { fetchJson } from '../api';
 
 export interface Position {
   id: string;
@@ -17,6 +18,10 @@ export interface Position {
   unrealized_pnl?: number;
   created_at: number;
   updated_at: number;
+  // Aliases for camelCase compatibility
+  entryPrice?: number;
+  currentPrice?: number;
+  unrealizedPnl?: number;
 }
 
 interface PositionsResponse {
@@ -44,11 +49,7 @@ export function usePositions(options: UsePositionsOptions = {}) {
     setError(null);
 
     try {
-      const response = await fetch('/api/positions');
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const result: PositionsResponse = await response.json();
+      const result = await fetchJson<PositionsResponse>('/api/positions');
       setData(result.positions);
     } catch (err) {
       setError(err as Error);

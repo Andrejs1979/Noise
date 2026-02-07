@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { fetchJson, api } from '../api';
 
 export interface RiskState {
   dailyPnl: number;
@@ -35,14 +36,10 @@ export function useRisk(options: UseRiskOptions = {}) {
     setError(null);
 
     try {
-      const response = await fetch('/api/risk/state');
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const riskData = await response.json();
+      const riskData = await fetchJson<any>('/api/risk/state');
       setData({
         ...riskData,
-        circuitBreakerTriggered: riskData.circuit_breaker_triggered || riskData.circuitBreakerTriggered || false,
+        circuitBreakerTriggered: riskData.circuit_breaker_triggered || false,
       });
     } catch (err) {
       setError(err as Error);
@@ -56,12 +53,7 @@ export function useRisk(options: UseRiskOptions = {}) {
     setError(null);
 
     try {
-      const response = await fetch('/api/risk/reset-circuit-breaker', {
-        method: 'POST',
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      await api.post('/api/risk/reset-circuit-breaker', {});
       // Refetch risk state after successful reset
       await fetchRisk();
       return true;

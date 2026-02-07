@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { fetchJson } from '../api';
 
 export interface AccountData {
   equity: number;
@@ -33,11 +34,7 @@ export function useAccount(options: UseAccountOptions = {}) {
     setError(null);
 
     try {
-      const response = await fetch('/api/account');
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const accountData = await response.json();
+      const accountData = await fetchJson<AccountData>('/api/account');
       setData(accountData);
     } catch (err) {
       setError(err as Error);
