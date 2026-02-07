@@ -116,8 +116,8 @@
 
 ### Deployment
 - [x] Install dependencies (npm install completed)
-- [ ] Run setup script to create D1 databases
-- [ ] Configure secrets in wrangler
+- [x] Run setup script to create D1 databases (databases exist, migrations run)
+- [ ] Configure secrets in wrangler (NOISE_API_KEY for local dev)
 - [ ] Deploy to development
 - [ ] Paper trading monitoring
 
@@ -199,23 +199,31 @@
 - 96 unit tests passing, 14 skipped (broker tests require credentials)
 - E2E tests ready to run with API server
 
+**2026-02-07**: Database & API Server Setup
+- D1 databases exist (noise-trading-dev, noise-trading-prod)
+- Database migrations bundled and executed (32 queries, 9 tables)
+- Fixed itty-router 5.x compatibility (AutoRouter, spread export)
+- API server tested locally - all endpoints responding correctly
+- CORS middleware properly configured
+- Health check endpoint working: /api/health returns {"status":"healthy"}
+
 ---
 
 ## Blockers
 
 1. ~~**Dependencies**: Need to run `npm install` in project root and dashboard/~~ ✅ Completed
-2. **D1 Databases**: Need to run `./scripts/setup.sh` to create databases (requires wrangler login)
-3. **Secrets**: Need to configure broker credentials (for paper trading)
+2. ~~**D1 Databases**: Need to run `./scripts/setup.sh` to create databases~~ ✅ Databases exist and migrations run
+3. **Secrets**: Need to configure NOISE_API_KEY and broker credentials (for full testing)
 
 ---
 
 ## Next Steps
 
 1. ~~Run `npm install` to install dependencies~~ ✅ Completed
-2. Run `./scripts/setup.sh` to create D1 databases (requires `npx wrangler login`)
-3. Add broker credentials to .dev.vars or wrangler secrets (for live testing)
-4. Run `npm run db:migrate` to create tables
-5. Test API endpoints locally with `npm run dev`
-6. Complete remaining broker adapters and strategies
-7. ~~Write unit tests~~ ✅ 96 tests passing
-8. Deploy to development environment
+2. ~~Run setup script to create D1 databases~~ ✅ Databases exist
+3. ~~Run `npm run db:migrate` to create tables~~ ✅ 32 queries executed
+4. ~~Test API endpoints locally~~ ✅ Server running on localhost:8787
+5. Configure NOISE_API_KEY in wrangler for local development
+6. Add broker credentials for paper trading tests
+7. Deploy to development environment
+8. Implement WebSocket for real-time updates (optional)
