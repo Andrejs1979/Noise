@@ -4,9 +4,7 @@
  * Trades breakouts with momentum confirmation
  */
 
-import type { Signal, SignalDirection, MarketRegime, Timeframe } from '@/types/signal.js';
-import type { PriceBar } from '@/types/signal.js';
-import { IndicatorResult } from '@/types/signal.js';
+import type { Signal, SignalDirection } from '@/types/signal.js';
 import type { StrategyInput } from './types.js';
 import { calculateBollingerBands, calculateADX, calculateATR, bollingerSignal, adxSignal } from '../indicators/indicators.js';
 import { generateId } from '@/utils/index.js';
@@ -183,7 +181,7 @@ export class BreakoutStrategy {
     bb: { upper: number; lower: number; middle: number; bandwidth: number },
     adx: number,
     atrValues: number[],
-    closes: number[]
+    _closes: number[]
   ): number {
     let strength = 0.4;
 
