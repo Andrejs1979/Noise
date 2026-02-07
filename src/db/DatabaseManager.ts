@@ -3,18 +3,7 @@
  * Wrapper for Cloudflare D1 database operations
  */
 
-import type {
-  Trade,
-  Position,
-  DBSignal,
-  DBRiskState,
-  DailyMetrics,
-  EquityCurve,
-  AuditLog,
-  CreateTradeInput,
-  CreateAuditLogInput,
-} from '@/types/database.js';
-import { createLogger, generateId } from '@/utils/index.js';
+import { createLogger } from '@/utils/index.js';
 
 const log = createLogger('DATABASE');
 
@@ -29,7 +18,10 @@ export interface QueryResult {
 }
 
 export class DatabaseManager {
-  constructor(private db: D1Database) {
+  public db: D1Database;
+
+  constructor(db: D1Database) {
+    this.db = db;
     log.info('DatabaseManager initialized');
   }
 
@@ -118,7 +110,8 @@ export class DatabaseManager {
     try {
       await this.queryFirst<{ result: number }>('SELECT 1 as result');
       return true;
-    } catch {
+    } catch (error) {
+      log.warn('Database health check failed', { error: (error as Error).message });
       return false;
     }
   }
@@ -127,10 +120,36 @@ export class DatabaseManager {
   // Convenience Methods
   // ==========================================================================
 
+  // Valid table names to prevent SQL injection
+  private readonly VALID_TABLES = new Set([
+    'trades',
+    'positions',
+    'signals',
+    'risk_state',
+    'daily_metrics',
+    'equity_curve',
+    'audit_log',
+  ] as const);
+
+  private validateTable(table: string): void {
+    if (!(this.VALID_TABLES as Set<string>).has(table)) {
+      throw new Error(`Invalid table name: ${table}`);
+    }
+  }
+
+  private validateOrderBy(orderBy: string): void {
+    // Only allow alphanumeric and underscore
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(orderBy)) {
+      throw new Error(`Invalid orderBy column: ${orderBy}`);
+    }
+  }
+
   async insert<T extends Record<string, unknown>>(
     table: string,
     data: T
   ): Promise<void> {
+    this.validateTable(table);
+
     const keys = Object.keys(data);
     const values = Object.values(data);
     const placeholders = keys.map(() => '?').join(', ');
@@ -148,6 +167,8 @@ export class DatabaseManager {
     id: string,
     data: Partial<T>
   ): Promise<void> {
+    this.validateTable(table);
+
     const keys = Object.keys(data);
     const values = Object.values(data);
     const setClause = keys.map((k) => `${k} = ?`).join(', ');
@@ -162,6 +183,8 @@ export class DatabaseManager {
   }
 
   async delete(table: string, id: string): Promise<void> {
+    this.validateTable(table);
+
     const sql = `DELETE FROM ${table} WHERE id = ?`;
     await this.execute(sql, [id]);
   }
@@ -170,6 +193,8 @@ export class DatabaseManager {
     table: string,
     id: string
   ): Promise<T | null> {
+    this.validateTable(table);
+
     const sql = `SELECT * FROM ${table} WHERE id = ?`;
     return await this.queryFirst<T>(sql, [id]);
   }
@@ -180,17 +205,27 @@ export class DatabaseManager {
     orderBy?: string;
     orderDir?: 'ASC' | 'DESC';
   }): Promise<T[]> {
+    this.validateTable(table);
+
     let sql = `SELECT * FROM ${table}`;
 
     if (options?.orderBy) {
-      sql += ` ORDER BY ${options.orderBy} ${options.orderDir || 'ASC'}`;
+      this.validateOrderBy(options.orderBy);
+      const orderDir = options.orderDir === 'DESC' ? 'DESC' : 'ASC';
+      sql += ` ORDER BY ${options.orderBy} ${orderDir}`;
     }
 
-    if (options?.limit) {
+    if (options?.limit !== undefined) {
+      if (options.limit < 0) {
+        throw new Error('Limit must be non-negative');
+      }
       sql += ` LIMIT ${options.limit}`;
     }
 
-    if (options?.offset) {
+    if (options?.offset !== undefined) {
+      if (options.offset < 0) {
+        throw new Error('Offset must be non-negative');
+      }
       sql += ` OFFSET ${options.offset}`;
     }
 
