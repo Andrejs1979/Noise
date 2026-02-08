@@ -14,7 +14,7 @@
 | Epic | Name | Status | Progress |
 |------|------|--------|----------|
 | Epic 1 | Project Setup | Complete | 4/4 stories |
-| Epic 2 | Broker Integration | Core Complete | 5/6 stories |
+| Epic 2 | Broker Integration | Complete | 6/6 stories |
 | Epic 3 | Risk Management | Complete | 6/6 stories |
 | Epic 4 | Signal Generation | Complete | 13/13 stories |
 | Epic 5 | Persistence Layer | Complete | 9/9 stories |
@@ -109,10 +109,8 @@
 
 ### Broker Integration
 - [x] Paper trading connection tests (test suite created, requires credentials to run)
-- [ ] WebSocket market data integration (useWebSocket uses polling as fallback)
-
-### Signal Generation
-- [ ] Market data feed integration (HistoricalDataFetcher exists but needs broker API)
+- [x] WebSocket market data integration (WebSocket support added, polling as fallback)
+- [x] Market data feed integration (BrokerMarketDataProvider implemented)
 
 ### Deployment
 - [x] Install dependencies (npm install completed)
@@ -122,7 +120,7 @@
 - [ ] Paper trading monitoring
 
 ### Optional Enhancements
-- [ ] WebSocket for real-time updates (polling works but not optimal)
+- [x] WebSocket for real-time updates (WebSocket + polling fallback implemented)
 - [x] Run E2E tests (Playwright installed, tests ready)
 
 ---
@@ -206,6 +204,24 @@
 - API server tested locally - all endpoints responding correctly
 - CORS middleware properly configured
 - Health check endpoint working: /api/health returns {"status":"healthy"}
+
+**2026-02-07**: Broker Market Data Integration Complete
+- Added getQuote() and getQuotes() methods to TradovateAdapter and AlpacaAdapter
+- Added getHistoricalData() methods to both adapters for OHLCV bars
+- Created BrokerMarketDataProvider for unified market data access
+- Implemented symbol routing (futures → Tradovate, equities → Alpaca)
+- Added caching with configurable TTL
+- 16 new unit tests for BrokerMarketDataProvider
+- Total: 112 tests passing
+
+**2026-02-07**: WebSocket Support Added
+- Created WebSocketManager for Cloudflare Workers
+- Implemented real-time bidirectional communication
+- Added upgradeWebSocket helper for routing
+- Integrated WebSocket endpoint (/api/ws) into main API
+- Updated useWebSocket hook with WebSocket + polling fallback
+- Support for subscriptions: quotes, positions, signals, risk state
+- Automatic reconnection and graceful fallback
 
 ---
 
